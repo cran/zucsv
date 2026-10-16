@@ -1,0 +1,48 @@
+Package: zucsv
+Title: Read CSV Files Using the 'zsv' Parser
+Version: 0.1.0
+Authors@R: c(
+    person("Pedro", "Baltazar", email = "pedrobtz@gmail.com",
+           role = c("aut", "cre", "cph")),
+    person("Tai Chi Minh Ralph", "Eastwood", role = c("ctb", "cph"),
+           comment = "Author of the bundled 'zsv' library"),
+    person("Matt", "Wong", role = "ctb",
+           comment = "Author of the bundled 'zsv' library"),
+    person("Guarnerix Inc dba Liquidaty", role = "cph",
+           comment = "Copyright holder of the bundled 'zsv' library"),
+    person("zsv contributors", role = c("ctb", "cph"),
+           comment = "Contributors to the bundled 'zsv' library"),
+    person("Max", "Ogden", role = c("ctb", "cph"),
+           comment = "Author of the 'csv-spectrum' test fixtures")
+  )
+Description: Reads comma-separated and other delimited text files into base R
+    data frames using the 'zsv' C parser <https://github.com/liquidaty/zsv> as
+    its native backend. Handles quoted fields, embedded delimiters and
+    newlines, escaped quotes, and both LF and CRLF line endings, and infers
+    logical, integer, double, and character column types. Column types can
+    also be given explicitly, in which case a value that cannot be converted
+    is an error rather than a silently missing value. The 'zsv' sources are
+    bundled, so there are no runtime dependencies.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.2.0)
+URL: https://github.com/pedrobtz/zucsv
+BugReports: https://github.com/pedrobtz/zucsv/issues
+Suggests: testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Config/Needs/website: rmarkdown, data.table, vroom
+Config/roxygen2/version: 8.1.0
+Language: en-US
+NeedsCompilation: yes
+Packaged: 2026-10-03 06:11:08 UTC; pbtz
+Author: Pedro Baltazar [aut, cre, cph],
+  Tai Chi Minh Ralph Eastwood [ctb, cph] (Author of the bundled 'zsv'
+    library),
+  Matt Wong [ctb] (Author of the bundled 'zsv' library),
+  Guarnerix Inc dba Liquidaty [cph] (Copyright holder of the bundled
+    'zsv' library),
+  zsv contributors [ctb, cph] (Contributors to the bundled 'zsv' library),
+  Max Ogden [ctb, cph] (Author of the 'csv-spectrum' test fixtures)
+Maintainer: Pedro Baltazar <pedrobtz@gmail.com>
+Repository: CRAN
+Date/Publication: 2026-10-16 12:50:02 UTC
