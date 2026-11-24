@@ -246,14 +246,32 @@ int zucsv_is_double(const unsigned char *str, size_t len) {
 #define ZUCSV_STRTOD_NAME zucsv_strtod_double
 #include "strtod_body.h"
 
+/* The same two instances with R's loops verbatim, no shortcuts. Never used
+   for reading: tests select them through C_strtod_mode() and require each
+   fast instance to agree with its verbatim twin bit for bit, which is the
+   check that the shortcuts are exact (#36). */
+#define ZUCSV_STRTOD_NO_FASTPATH
+#define ZUCSV_ACC long double
+#define ZUCSV_ACC_MANT_DIG LDBL_MANT_DIG
+#define ZUCSV_STRTOD_NAME zucsv_strtod_ldouble_verbatim
+#include "strtod_body.h"
+
+#define ZUCSV_ACC double
+#define ZUCSV_ACC_MANT_DIG DBL_MANT_DIG
+#define ZUCSV_STRTOD_NAME zucsv_strtod_double_verbatim
+#include "strtod_body.h"
+#undef ZUCSV_STRTOD_NO_FASTPATH
+
 /* The fallback, and what zucsv did before: R_strtod needs a terminator. */
 static double zucsv_strtod_call(const unsigned char *s, size_t n) {
   char stack_buf[256];
   char *buf = stack_buf;
   if (n + 1 > sizeof(stack_buf)) {
     buf = (char *)malloc(n + 1);
+    /* Nothing is held here, so an R error is safe; a silent NaN would be a
+       wrong value (design SS20, #36). */
     if (!buf)
-      return R_NaN;
+      Rf_error("Ran out of memory converting a %lu-byte numeric cell", (unsigned long)n);
   }
   memcpy(buf, s, n);
   buf[n] = '\0';
@@ -264,7 +282,14 @@ static double zucsv_strtod_call(const unsigned char *s, size_t n) {
   return value;
 }
 
-enum { ZUCSV_STRTOD_UNSET = -1, ZUCSV_STRTOD_DOUBLE = 0, ZUCSV_STRTOD_LDOUBLE = 1, ZUCSV_STRTOD_CALL = 2 };
+enum {
+  ZUCSV_STRTOD_UNSET = -1,
+  ZUCSV_STRTOD_DOUBLE = 0,
+  ZUCSV_STRTOD_LDOUBLE = 1,
+  ZUCSV_STRTOD_CALL = 2,
+  ZUCSV_STRTOD_LDOUBLE_VERBATIM = 3, /* tests only */
+  ZUCSV_STRTOD_DOUBLE_VERBATIM = 4   /* tests only */
+};
 static int zucsv_strtod_mode = ZUCSV_STRTOD_UNSET;
 
 static int zucsv_same_bits(double a, double b) {
@@ -292,10 +317,28 @@ static const char *const zucsv_probes[] = {
    nothing but the length of this list. Forcing one out-of-line call site
    here keeps the decision about the hot path independent of how many
    probes we choose to have. */
+/* The mantissa width long double has at run time: the number of bits for
+   which 1 + 2^-(bits - 1) is still above 1. volatile keeps the compiler from
+   folding it to LDBL_MANT_DIG. */
+static int zucsv_ldouble_mant_dig(void) {
+  volatile long double one = 1.0L, eps = 1.0L, sum;
+  int digits = 1;
+  for (;;) {
+    eps /= 2.0L;
+    sum = one + eps;
+    if (sum == one || digits > 128)
+      break;
+    digits++;
+  }
+  return digits;
+}
+
 void zucsv_numeric_init(void) {
 
   zucsv_strtod_ldouble_fill();
   zucsv_strtod_double_fill();
+  zucsv_strtod_ldouble_verbatim_fill();
+  zucsv_strtod_double_verbatim_fill();
 
   /* Probing goes through zucsv_as_double() rather than calling the two
      instances directly. Each converter then keeps exactly one call site, so
@@ -304,11 +347,21 @@ void zucsv_numeric_init(void) {
      measured 0.141s -> 0.201s on a 2M-cell numeric file with 15 probes
      against 7: the loop gets unrolled, a copy of the converter is inlined
      per probe, and the inlining budget for zucsv_as_double() is spent. */
+  /* The candidates, in order of speed. The long double fast instance is a
+     candidate only when long double really carries LDBL_MANT_DIG bits at run
+     time: its shortcuts assume it (strtod_body.h), and an emulator may
+     compute long double in double precision while LDBL_MANT_DIG still says
+     64. valgrind does, and there the fast instance agreed with every probe
+     yet not with as.numeric() on random input. R's own R_strtod runs under
+     the same emulation, so the verbatim instance still matches it. */
   const size_t nprobe = sizeof(zucsv_probes) / sizeof(*zucsv_probes);
-  int ok_ld = 1, ok_d = 1;
+  const int candidates[] = {ZUCSV_STRTOD_LDOUBLE, ZUCSV_STRTOD_LDOUBLE_VERBATIM, ZUCSV_STRTOD_DOUBLE};
+  const int ld_exact = zucsv_ldouble_mant_dig() >= LDBL_MANT_DIG;
 
-  for (int mode = 0; mode < 2; mode++) {
-    zucsv_strtod_mode = mode ? ZUCSV_STRTOD_DOUBLE : ZUCSV_STRTOD_LDOUBLE;
+  for (size_t c = 0; c < sizeof(candidates) / sizeof(*candidates); c++) {
+    if (candidates[c] == ZUCSV_STRTOD_LDOUBLE && !ld_exact)
+      continue;
+    zucsv_strtod_mode = candidates[c];
     int ok = 1;
     for (size_t p = 0; p < nprobe; p++) {
       char *end;
@@ -316,13 +369,10 @@ void zucsv_numeric_init(void) {
       double got = zucsv_as_double((const unsigned char *)zucsv_probes[p], strlen(zucsv_probes[p]));
       ok = ok && zucsv_same_bits(r, got);
     }
-    if (mode)
-      ok_d = ok;
-    else
-      ok_ld = ok;
+    if (ok)
+      return;
   }
-
-  zucsv_strtod_mode = ok_ld ? ZUCSV_STRTOD_LDOUBLE : ok_d ? ZUCSV_STRTOD_DOUBLE : ZUCSV_STRTOD_CALL;
+  zucsv_strtod_mode = ZUCSV_STRTOD_CALL;
 }
 
 double zucsv_as_double(const unsigned char *s, size_t n) {
@@ -350,9 +400,29 @@ double zucsv_as_double(const unsigned char *s, size_t n) {
     return zucsv_strtod_ldouble(s, n, i, sign);
   case ZUCSV_STRTOD_DOUBLE:
     return zucsv_strtod_double(s, n, i, sign);
+  case ZUCSV_STRTOD_LDOUBLE_VERBATIM:
+    return zucsv_strtod_ldouble_verbatim(s, n, i, sign);
+  case ZUCSV_STRTOD_DOUBLE_VERBATIM:
+    return zucsv_strtod_double_verbatim(s, n, i, sign);
   default:
     return zucsv_strtod_call(s, n);
   }
+}
+
+/* Tests only (#36): returns the mode in use, after calibration, and with a
+   non-NULL `mode` switches to it. 0 double, 1 long double, 2 R_strtod, 3 and
+   4 the verbatim long double and double instances. Not exported. */
+SEXP C_strtod_mode(SEXP mode) {
+  if (zucsv_strtod_mode == ZUCSV_STRTOD_UNSET)
+    zucsv_numeric_init();
+  int old = zucsv_strtod_mode;
+  if (mode != R_NilValue) {
+    if (TYPEOF(mode) != INTSXP || XLENGTH(mode) != 1 || INTEGER(mode)[0] < 0 ||
+        INTEGER(mode)[0] > ZUCSV_STRTOD_DOUBLE_VERBATIM)
+      Rf_error("'mode' must be a single integer from 0 to 4");
+    zucsv_strtod_mode = INTEGER(mode)[0];
+  }
+  return Rf_ScalarInteger(old);
 }
 
 /* ------------------------------------------------------------------ *

@@ -1,6 +1,6 @@
 Package: zucsv
 Title: Read CSV Files Using the 'zsv' Parser
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: c(
     person("Pedro", "Baltazar", email = "pedrobtz@gmail.com",
            role = c("aut", "cre", "cph")),
@@ -31,10 +31,10 @@ BugReports: https://github.com/pedrobtz/zucsv/issues
 Suggests: testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Config/Needs/website: rmarkdown, data.table, vroom
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1
 Language: en-US
 NeedsCompilation: yes
-Packaged: 2026-10-03 06:11:08 UTC; pbtz
+Packaged: 2026-11-24 14:49:53 UTC; pbtz
 Author: Pedro Baltazar [aut, cre, cph],
   Tai Chi Minh Ralph Eastwood [ctb, cph] (Author of the bundled 'zsv'
     library),
@@ -45,4 +45,4 @@ Author: Pedro Baltazar [aut, cre, cph],
   Max Ogden [ctb, cph] (Author of the 'csv-spectrum' test fixtures)
 Maintainer: Pedro Baltazar <pedrobtz@gmail.com>
 Repository: CRAN
-Date/Publication: 2026-10-16 12:50:02 UTC
+Date/Publication: 2026-11-24 15:00:02 UTC

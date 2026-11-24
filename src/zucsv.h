@@ -40,8 +40,11 @@
 #define ZUCSV_NOINLINE
 #endif
 
-/* Records between R_CheckUserInterrupt() calls. */
+/* R_CheckUserInterrupt() runs every ZUCSV_INTERRUPT_INTERVAL records, or
+   once ZUCSV_INTERRUPT_BYTES more input has been scanned, whichever comes
+   first: with rows near the record limit, 16k records is gigabytes (#31). */
 #define ZUCSV_INTERRUPT_INTERVAL 16384
+#define ZUCSV_INTERRUPT_BYTES ((size_t)64 * 1024 * 1024)
 
 /* Bytes of a cell value shown in an error message before it is elided. */
 #define ZUCSV_MSG_MAX 40
@@ -83,6 +86,13 @@ typedef struct {
   const char *data;
   size_t len;
   size_t pos;
+  /* Set by the parser's diagnostic sink when zsv truncates a record that
+     does not fit its buffer (design SS15). zsv says so only through
+     errprintf, whichever cell overflowed. */
+  int truncated;
+  /* Set when the input ended inside a quoted cell (tools/patches/0003): zsv
+     closes it virtually, so the cell alone cannot say so (#30). */
+  int unclosed;
 } zucsv_reader;
 
 /* ------------------------------------------------------------------ *
@@ -137,6 +147,9 @@ double zucsv_as_double(const unsigned char *str, size_t len);
    afterwards the conversion state is read-only, which keeps the hot path
    branch-free and would keep it race-free on worker threads. */
 void zucsv_numeric_init(void);
+/* Tests only, never exported (#36): switches the converter instance, which
+   is the one write to that state after init. Not for use while a read runs. */
+SEXP C_strtod_mode(SEXP mode);
 
 /* --- per-column inference state ------------------------------------ */
 
